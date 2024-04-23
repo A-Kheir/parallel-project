@@ -1,0 +1,3 @@
+gcc-13 -o seq.o seq.c && ./seq.o vjht08
+gcc-13 -o omp.o omp.c -fopenmp && ./omp.o vjht08
+mpicc -o mpi.o mpi.c && mpirun -np 6 ./mpi.o vjht08
