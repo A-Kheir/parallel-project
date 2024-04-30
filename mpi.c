@@ -21,6 +21,7 @@ char* custom_hash(const char* input) {
     return hashed_str;
 }
 
+// Task parallelism
 // Function to hash passwords and write them to the hashed password file
 void hash_and_save_passwords(MPI_File* input, int rank, int size, int overlap) {
     MPI_Offset global_start, global_end;
@@ -108,8 +109,6 @@ void hash_and_save_passwords(MPI_File* input, int rank, int size, int overlap) {
 
     MPI_File_close(input);
 
-    // printf("Rank %d: %s\n", rank, hashed_results);
-
     MPI_Gather(hashed_results, total_size, MPI_CHAR, gathered_results, total_size, MPI_CHAR, 0, MPI_COMM_WORLD);
 
     // Master process writes the gathered results to the output file
@@ -128,6 +127,7 @@ void hash_and_save_passwords(MPI_File* input, int rank, int size, int overlap) {
     free(hashed_results);
 }
 
+// Data parallelism
 // Function to search hashed passwords in the wordlist
 int search_hashed_password(MPI_File* input, const char* hashed_password, int rank, int size, int overlap) {
     MPI_Offset global_start;
@@ -221,8 +221,16 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    double start_hash = MPI_Wtime();
+
     // Hash passwords and save to file
     hash_and_save_passwords(&plain_input, rank, size, overlap);
+
+    double end_hash = MPI_Wtime();
+
+    if (rank == 0) {
+        printf("Time to hash passwords: %.5f ms\n", (end_hash - start_hash) * 1000);
+    }
 
     // Cracking phase
     error_code = MPI_File_open(MPI_COMM_WORLD, HASHED_PASSWORDS_FILE, MPI_MODE_RDONLY, MPI_INFO_NULL, &hashed_input);
