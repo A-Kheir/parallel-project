@@ -57,7 +57,8 @@ void hash_wordlist(const char* wordlist_file, const char* hashed_passwords_file)
 
     double start_hash = omp_get_wtime();
 
-    #pragma omp parallel for num_threads(3) shared(passwords, hashed_passwords) schedule(static)
+    // Task parallelism to hash the wordlist
+    #pragma omp parallel for num_threads(2) shared(passwords, hashed_passwords) schedule(static)
     for (int i = 0; i < count; i++) {
         // Remove newline characters from each password
         passwords[i][strcspn(passwords[i], "\r\n")] = '\0';
@@ -86,6 +87,13 @@ void hash_wordlist(const char* wordlist_file, const char* hashed_passwords_file)
 }
 
 int main(int argc, char* argv[]) {
+    // check if cancelation is enabled
+    if (omp_get_cancellation()) {
+        printf("Cancellation is enabled\n");
+    } else {
+        printf("Cancellation is disabled\n");
+    }
+
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <password>\n", argv[0]);
         return 1;
@@ -123,27 +131,39 @@ int main(int argc, char* argv[]) {
         line_count++;
     }
 
-    int found = 0;
-    int found_index = -1;
-
     double start_time = omp_get_wtime();
 
-    #pragma omp parallel for num_threads(4) schedule(static)
-    for (int i = 0; i < line_count; i++) {
-        if (found) continue; // Skip the rest of the loop if the password is found
-        if (strcmp(lines[i], hashed_password) == 0) {
-            #pragma omp critical
-            {
-                if (!found) {
+    int found = 0;
+
+    // Data parallelism to search for the password
+    #pragma omp parallel num_threads(8) // seperate omp parallel and omp for to prevent openmp nowait warning
+    {
+        #pragma omp for schedule(static)
+        for (int i = 0; i < line_count; i++) {
+            // Debug cancelation
+            // printf("Thread %d searching at index %d\n", omp_get_thread_num(), i);
+            if (strcmp(lines[i], hashed_password) == 0) {
+                #pragma omp critical
+                {
+                    printf("Password found at index %d\n", i);
                     found = 1;
-                    found_index = i;
                 }
+                #pragma omp cancel for // cancel the loop if password is found
             }
+            #pragma omp cancellation point for
         }
     }
 
     double end_time = omp_get_wtime();
     double search_time = (end_time - start_time) * 1000;
+
+    if (found) {
+        printf("The cracked password is %s\n", password_to_crack);
+    } else {
+        printf("Password not found!\n");
+    }
+
+    printf("Time of execution (searching): %.5f milliseconds\n", search_time);
 
     fclose(hashed_passwords);
     free(hashed_password);
@@ -153,14 +173,6 @@ int main(int argc, char* argv[]) {
     }
     free(lines);
     free(hashed_data);
-
-    if (found) {
-        printf("The cracked password is %s\n", password_to_crack);
-    } else {
-        printf("Password not found!\n");
-    }
-
-    printf("Time of execution (searching): %.5f milliseconds\n", search_time);
 
     return 0;
 }
